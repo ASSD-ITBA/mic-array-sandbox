@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mic array sandbox</title>
+
+  <link rel="icon" type="image/svg+xml" href="assets/acorn.svg?v=5">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/acorn-32.png?v=5">
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/acorn-64.png?v=5">
+
+  <link rel="stylesheet" href="vendor/codemirror/codemirror.css">
+  <link rel="stylesheet" href="vendor/codemirror/material-darker.css">
+  <link rel="stylesheet" href="css/styles.css?v=5">
+</head>
+
+<body>
+
+  <header id="app-header">
+    <img src="assets/logo_itba_pxl.png" alt="ITBA" class="logo">
+    <div class="title-block">
+      <h1>Mic array sandbox</h1>
+    </div>
+    <span class="run-state" id="run-state">detenido</span>
+    <span class="py-badge" id="py-badge">arrancando&hellip;</span>
+  </header>
+
+  <div id="app-banner" hidden></div>
+
+  <main id="app-main">
+
+    <!-- ══════════════════ EL CÓDIGO ══════════════════ -->
+    <section class="panel" id="editor-panel">
+      <div class="panel-head">
+        <div class="tabs" role="tablist" aria-label="Niveles">
+          <button type="button" class="tab on" role="tab" data-level="1" aria-selected="true"
+                  title="Par lineal 0-2 y desfasaje">level 1</button>
+          <button type="button" class="tab" role="tab" data-level="2" aria-selected="false"
+                  title="Beamforming con el par 0-2">level 2</button>
+          <button type="button" class="tab" role="tab" data-level="3" aria-selected="false"
+                  title="Los cuatro micrófonos en cruz">level 3</button>
+          <button type="button" class="tab" role="tab" data-level="4" aria-selected="false"
+                  title="Ajuste por cuadrados mínimos">level 4 (opcional)</button>
+        </div>
+        <div class="panel-actions">
+          <button class="btn ghost" id="btn-open"
+                  title="Cargar un archivo guardado con los cuatro niveles">Abrir</button>
+          <button class="btn ghost" id="btn-save"
+                  title="Descargar los cuatro niveles en un solo archivo, para entregar o compartir">Guardar</button>
+          <input type="file" id="file-open" accept=".py,.txt,text/plain" hidden>
+          <button class="btn ghost" id="btn-reset-code"
+                  title="Volver a poner el código inicial de este nivel">Reset</button>
+          <button class="btn primary" id="btn-run" title="Ctrl+Enter">Run &#9656;</button>
+          <button class="btn stop" id="btn-stop" hidden>Stop &#9632;</button>
+        </div>
+      </div>
+
+      <div class="params" id="params-strip">&mdash;</div>
+
+      <div class="code-shell" id="code-shell">
+        <div id="code-body"></div>
+      </div>
+
+      <div class="console">
+        <div class="console-head">
+          <span>Consola</span>
+          <span class="stat" id="stat-run">sin correr</span>
+          <button class="btn ghost tiny" id="btn-clear-console">limpiar</button>
+        </div>
+        <pre id="console-out"></pre>
+      </div>
+    </section>
+
+    <!-- ══════════════════ LA SEÑAL ══════════════════ -->
+    <aside id="side-col">
+      <section class="panel" id="line-panel">
+
+        <div class="panel-head">
+          <h2>La señal</h2>
+          <div class="panel-actions">
+            <div class="seg-switch" role="group" aria-label="De dónde vienen las muestras">
+              <button type="button" class="seg" id="src-board" aria-pressed="false"
+                      title="Los cuatro micrófonos, por USB desde la pico-ice">Placa</button>
+              <button type="button" class="seg on" id="src-synth" aria-pressed="true"
+                      title="Una onda plana generada aquí, desde la dirección elegida">Sintética</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="board-strip" id="board-strip" hidden>
+          <button class="btn" id="btn-connect">Conectar</button>
+          <div class="note" id="board-note">sin conectar</div>
+        </div>
+
+        <div class="plot">
+          <div class="plot-head">
+            <span class="plot-name" id="polar-name">Dirección</span>
+            <span class="plot-note" id="az-readout">&mdash;</span>
+            <button type="button" class="btn ghost tiny on" id="btn-map" aria-pressed="true"
+                    title="Mostrar u ocultar lo que devuelve process_block además de la dirección">Mapa</button>
+          </div>
+          <canvas id="polar-canvas"></canvas>
+        </div>
+
+        <div class="plot">
+          <div class="plot-head">
+            <span class="plot-name" id="scope-name">Osciloscopio</span>
+            <span class="plot-note" id="scope-note">&mdash;</span>
+            <button type="button" class="btn ghost tiny" id="btn-spectrum" aria-pressed="false"
+                    title="Los cuatro canales en frecuencia">Espectro</button>
+          </div>
+          <canvas id="scope-canvas"></canvas>
+        </div>
+
+        <div class="plate">
+          <div class="plate-title">Fuente sintética</div>
+          <label class="slider-row synth-only">
+            <span class="slider-label">Frec.</span>
+            <input type="range" id="freq" min="0" max="1000" step="1" value="600">
+            <span class="slider-value" id="freq-value">&mdash;</span>
+          </label>
+          <label class="slider-row synth-only">
+            <span class="slider-label">Azimut</span>
+            <input type="range" id="az" min="0" max="359" step="1" value="30">
+            <span class="slider-value" id="az-value">&mdash;</span>
+          </label>
+          <label class="slider-row synth-only"
+                 title="0° = en el plano de la cruz, 90° = perpendicular a la placa">
+            <span class="slider-label">Elev.</span>
+            <input type="range" id="el" min="0" max="90" step="1" value="20">
+            <span class="slider-value" id="el-value">&mdash;</span>
+          </label>
+          <label class="slider-row synth-only">
+            <span class="slider-label">Ruido</span>
+            <input type="range" id="noise" min="0" max="0.3" step="0.005" value="0.02">
+            <span class="slider-value" id="noise-value">&mdash;</span>
+          </label>
+          <div class="plate-foot synth-only">
+            <label class="switch-row" title="La fuente da vueltas a 30°/s">
+              <input type="checkbox" id="spin">
+              <span class="slide" aria-hidden="true"></span>
+              <span>Girar</span>
+            </label>
+            <label class="select-row" title="Factor de diezmado simulado: fs = 1 MHz / R">
+              <span>R</span>
+              <select id="synth-r">
+                <option value="32" selected>32 · 31.25 kHz</option>
+                <option value="64">64 · 15.63 kHz</option>
+                <option value="128">128 · 7.81 kHz</option>
+                <option value="256">256 · 3.91 kHz</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="plate-title">Pantalla</div>
+          <label class="slider-row scope-only">
+            <span class="slider-label">Zoom</span>
+            <input type="range" id="zoom" min="0" max="12" step="1" value="1">
+            <span class="slider-value" id="zoom-value">&mdash;</span>
+          </label>
+          <div class="plate-foot">
+            <label class="select-row scope-only" title="Ancho de la ventana del osciloscopio">
+              <span>Ventana</span>
+              <select id="win">
+                <option value="2">2 ms</option>
+                <option value="5" selected>5 ms</option>
+                <option value="20">20 ms</option>
+                <option value="50">50 ms</option>
+              </select>
+            </label>
+            <label class="switch-row scope-only" title="Cruce por cero ascendente del canal 0">
+              <input type="checkbox" id="trig" checked>
+              <span class="slide" aria-hidden="true"></span>
+              <span>Disparo</span>
+            </label>
+            <button class="btn tiny rec-btn" id="btn-rec"
+                    title="Graba los cuatro canales en un WAV de 32 bits, hasta 60 s">&#9679; Grabar</button>
+          </div>
+        </div>
+
+      </section>
+    </aside>
+
+  </main>
+
+  <script src="vendor/codemirror/codemirror.js"></script>
+  <script src="vendor/codemirror/python.js"></script>
+  <script src="vendor/codemirror/matchbrackets.js"></script>
+  <script src="vendor/codemirror/active-line.js"></script>
+  <script>
+    if (!window.CodeMirror || !CodeMirror.modes.python) {
+      var CM = 'https://cdn.jsdelivr.net/npm/codemirror@5.65.21/';
+      ['lib/codemirror.css', 'theme/material-darker.css'].forEach(function (p) {
+        document.write('<link rel="stylesheet" href="' + CM + p + '">');
+      });
+      ['lib/codemirror.js', 'mode/python/python.js',
+       'addon/edit/matchbrackets.js', 'addon/selection/active-line.js'].forEach(function (p) {
+        document.write('<scr' + 'ipt src="' + CM + p + '"><\/scr' + 'ipt>');
+      });
+    }
+  </script>
+
+  <script src="js/geometry.js?v=5"></script>
+  <script src="js/fft.js?v=5"></script>
+  <script src="js/board.js?v=5"></script>
+  <script src="js/synth.js?v=5"></script>
+  <script src="js/scope.js?v=5"></script>
+  <script src="js/polar.js?v=5"></script>
+  <script src="js/editor.js?v=5"></script>
+  <script src="js/pyrunner.js?v=5"></script>
+  <script src="js/app.js?v=5"></script>
+</body>
+
+</html>
